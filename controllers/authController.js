@@ -1,5 +1,6 @@
 import User from '../models/user.js';
-import bcrypt from 'bcryptjs';
+import bcrypt from 'bcryptjs'; 
+import axios from 'axios';
 import { generateToken, generateRefreshToken, verifyRefreshToken } from '../utils/jwt.js';
 import { sendVerificationEmail, sendPasswordResetEmail } from '../config/email.js';
 
@@ -46,8 +47,27 @@ export const register = async (req, res) => {
       fullname,
       phoneNumber,
       address,
+      captchaToken, 
     } = req.body;
 
+    
+    if (!captchaToken) {
+      return res.status(400).json({ message: 'Vui lòng xác nhận reCAPTCHA.' });
+    }
+
+    try {
+      
+      const verifyUrl = `https://www.google.com/recaptcha/api/siteverify?secret=${process.env.RECAPTCHA_SECRET_KEY}&response=${captchaToken}`;
+      const response = await axios.post(verifyUrl);
+      
+      if (!response.data.success) {
+        return res.status(400).json({ message: 'Xác thực reCAPTCHA thất bại. Vui lòng thử lại.' });
+      }
+    } catch (error) {
+      console.error('reCAPTCHA verification error:', error);
+      return res.status(500).json({ message: 'Lỗi hệ thống khi xác thực Captcha.' });
+    }
+   
     if (!username || !password || !confirmPassword || !email || !fullname || !phoneNumber || !address) {
       return res.status(400).json({ message: 'Vui lòng điền đầy đủ thông tin.' });
     }
@@ -75,23 +95,20 @@ export const register = async (req, res) => {
       addresses: [address],
     });
 
-    // Email test: bỏ qua bước xác thực, đăng nhập luôn
+    
     if (email === '1234@example.com') {
       await user.save();
       const userObj = user.toObject();
       delete userObj.password;
-
       const accessToken = generateToken(user._id.toString(), user.role || 'customer');
       const refreshToken = generateRefreshToken(user._id.toString());
-
       return res.status(201).json({ user: userObj, token: accessToken, refreshToken });
     }
 
-    // Các email khác: tạo code xác thực và gửi email
     const code = generateVerificationCode(8);
     user.isEmailVerified = false;
     user.emailVerificationCode = code;
-    user.emailVerificationExpires = new Date(Date.now() + 15 * 60 * 1000); // 15 phút
+    user.emailVerificationExpires = new Date(Date.now() + 15 * 60 * 1000);
 
     await user.save();
 
@@ -99,7 +116,6 @@ export const register = async (req, res) => {
       await sendVerificationEmail(email, code);
     } catch (e) {
       console.error('Send verification email failed', e);
-      // Không rollback user, chỉ báo vẫn tạo tài khoản nhưng gửi mail lỗi
     }
 
     return res.status(201).json({
