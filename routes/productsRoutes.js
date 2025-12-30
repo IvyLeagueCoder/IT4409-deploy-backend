@@ -17,6 +17,6 @@ router.delete('/products/:id', authenticateToken, authorizeRole('admin'), produc
 //feature product
 router.get("/products/featured", productController.getFeaturedProducts); 
 
-router.get("/products/bestsellers", productController.getBestSellerProducts);
+
 
 export default router;
