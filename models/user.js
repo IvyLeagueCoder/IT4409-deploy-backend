@@ -24,6 +24,14 @@ const UserSchema = new mongoose.Schema(
     discountCodes: [{ type: mongoose.Schema.Types.ObjectId, ref: "DiscountCode" }],
     refreshToken: { type: String },
 
+    // Phương thức đăng nhập: local (mật khẩu) hoặc google
+    authProvider: {
+      type: String,
+      enum: ["local", "google"],
+      default: "local",
+    },
+    googleId: { type: String },
+
     // Xác thực email 
     isEmailVerified: { type: Boolean, default: false },
     emailVerificationCode: { type: String },

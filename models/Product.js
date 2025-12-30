@@ -3,9 +3,10 @@ import mongoose from "mongoose";
 const ProductSchema = new mongoose.Schema(
   {
     // ===== CỬA HÀNG =====
+    // Một số dữ liệu cũ đang dùng giá trị chuỗi như "default_store",
+    // nên để kiểu String để tránh lỗi cast khi đọc/cập nhật.
     storeId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Store",
+      type: String,
     },
 
     // ===== THÔNG TIN CƠ BẢN =====
@@ -65,14 +66,13 @@ const ProductSchema = new mongoose.Schema(
           // VD keyboard: { color: "Black", switch: "Caramel Latte" }
         },
 
+        // Giá và tồn kho cho biến thể (không bắt buộc để tránh lỗi với dữ liệu cũ)
         price: {
           type: Number,
-          required: true,
         },
 
         stock: {
           type: Number,
-          required: true,
         },
 
         sku: {

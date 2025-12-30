@@ -5,7 +5,7 @@ dotenv.config();
 
 let redisClient;
 
-if (process.env.REDIS_URL) {
+if (process.env.REDIS_URL && process.env.REDIS_URL.trim()) {
   redisClient = createClient({ url: process.env.REDIS_URL });
   redisClient.on("error", (err) => console.warn("⚠️ Redis Error:", err));
 } else {
@@ -23,7 +23,7 @@ if (process.env.REDIS_URL) {
 
 const connectRedis = async () => {
   try {
-    if (!process.env.REDIS_URL) {
+    if (!process.env.REDIS_URL || !process.env.REDIS_URL.trim()) {
       console.log("Redis disabled (no REDIS_URL)");
       return;
     }

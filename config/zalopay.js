@@ -8,6 +8,7 @@ export const zaloPayConfig = {
   key2: process.env.ZALOPAY_KEY2 || "kLtgPl8HHhfvMuDHPwKfgfsY4Ydm9eIz",
   endpoint:
     process.env.ZALOPAY_ENDPOINT || "https://sb-openapi.zalopay.vn/v2/create",
+  callback_url: process.env.ZALOPAY_CALLBACK_URL || "",
 };
 
 export const createZaloPayOrder = async ({
@@ -16,6 +17,8 @@ export const createZaloPayOrder = async ({
   description,
   embedData = {},
   items = [{}],
+  bankCode,
+  callbackUrl,
 }) => {
   if (!amount || amount <= 0) {
     throw new Error("Invalid amount for ZaloPay order");
@@ -32,7 +35,11 @@ export const createZaloPayOrder = async ({
     embed_data: JSON.stringify(embedData),
     amount,
     description: description || `Payment for order #${transID}`,
-    bank_code: "zalopayapp",
+    // Nếu bankCode không truyền vào, để trống để ZaloPay hiển thị nhiều kênh thanh toán (gateway)
+    ...(bankCode ? { bank_code: bankCode } : {}),
+    ...(callbackUrl ? { callback_url: callbackUrl } : zaloPayConfig.callback_url
+      ? { callback_url: zaloPayConfig.callback_url }
+      : {}),
   };
 
   const data =

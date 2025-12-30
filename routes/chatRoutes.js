@@ -6,6 +6,9 @@ import {
 	getConversationsForAdmin,
 	getChatHistoryForAdmin,
 	adminSendMessage,
+	adminJoinSupport,
+	adminEndSupport,
+	getUserSupportStatus,
 } from "../controllers/chatController.js";
 
 const router = Router();
@@ -15,6 +18,9 @@ router.post("/chat", authenticateToken, sendChatMessage);
 
 // Người dùng lấy lịch sử chat của chính mình
 router.get("/chat/history", authenticateToken, getChatHistory);
+
+// Người dùng xem admin đang/đã hỗ trợ mình
+router.get("/chat/support-status", authenticateToken, getUserSupportStatus);
 
 // Admin: danh sách hội thoại (mỗi user 1 đoạn chat)
 router.get(
@@ -38,6 +44,22 @@ router.post(
 	authenticateToken,
 	authorizeRole("admin"),
 	adminSendMessage
+);
+
+// Admin: tham gia hỗ trợ 1 user
+router.post(
+	"/admin/chat/:userId/join",
+	authenticateToken,
+	authorizeRole("admin"),
+	adminJoinSupport
+);
+
+// Admin: kết thúc hỗ trợ 1 user (không xóa chat)
+router.post(
+	"/admin/chat/:userId/end",
+	authenticateToken,
+	authorizeRole("admin"),
+	adminEndSupport
 );
 
 export default router;

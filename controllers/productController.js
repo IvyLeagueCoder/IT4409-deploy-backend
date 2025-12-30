@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 import Product from "../models/Product.js";
 import Category from "../models/Category.js";
+import Brand from "../models/Brand.js";
 import cloudinary from "../config/cloudinary.js";
 
 import { redisClient } from "../config/redis.js";
@@ -17,7 +18,23 @@ const uploadBufferToCloudinary = async (fileBuffer, mimetype, filename) => {
 
 export const createProduct = async (req, res) => {
   try {
-    let { name, description, price, stock, category, storeId } = req.body;
+    let {
+      name,
+      description,
+      price,
+      discountPrice,
+      stock,
+      category,
+      brand,
+      storeId,
+      specifications,
+      highlights,
+      warranty,
+      origin,
+      isActive,
+      isBestSeller,
+      isNew,
+    } = req.body;
     const images = [];
 
     if (req.files && req.files.length) {
@@ -64,14 +81,79 @@ export const createProduct = async (req, res) => {
       }
     }
 
+    // Resolve brand if provided
+    if (brand) {
+      if (mongoose.Types.ObjectId.isValid(brand)) {
+        // keep as-is
+      } else {
+        try {
+          const foundBrand = await Brand.findOne({
+            name: { $regex: `^${brand}$`, $options: "i" },
+          });
+          if (foundBrand) brand = foundBrand._id;
+          else brand = undefined;
+        } catch (e) {
+          console.warn(
+            "createProduct: error while resolving brand by name",
+            e?.message || e
+          );
+          brand = undefined;
+        }
+      }
+    }
+
+    let parsedSpecifications = undefined;
+    if (specifications) {
+      try {
+        parsedSpecifications =
+          typeof specifications === "string"
+            ? JSON.parse(specifications)
+            : specifications;
+      } catch (e) {
+        console.warn(
+          "createProduct: cannot parse specifications",
+          e?.message || e
+        );
+        parsedSpecifications = specifications;
+      }
+    }
+
+    let parsedHighlights = undefined;
+    if (highlights) {
+      try {
+        const h =
+          typeof highlights === "string" ? JSON.parse(highlights) : highlights;
+        if (Array.isArray(h)) parsedHighlights = h;
+      } catch (e) {
+        console.warn("createProduct: cannot parse highlights", e?.message || e);
+      }
+    }
+
     const product = new Product({
       storeId,
       name,
       description,
       price: Number(price || 0),
+      discountPrice:
+        discountPrice !== undefined ? Number(discountPrice || 0) : undefined,
       stock: Number(stock || 0),
       category,
+      brand,
       images,
+      specifications: parsedSpecifications,
+      highlights: parsedHighlights,
+      warranty: warranty || undefined,
+      origin: origin || undefined,
+      isActive:
+        isActive === undefined
+          ? undefined
+          : isActive === "true" || isActive === true,
+      isBestSeller:
+        isBestSeller === undefined
+          ? undefined
+          : isBestSeller === "true" || isBestSeller === true,
+      isNew:
+        isNew === undefined ? undefined : isNew === "true" || isNew === true,
     });
 
     await product.save();
@@ -101,19 +183,43 @@ export const getProducts = async (req, res) => {
     if (q) {
       console.log("--- SEARCH MODE (no redis cache) ---", q);
       const regex = new RegExp(q, "i");
-      const filter = {
-        $or: [{ name: regex }, { brand: regex }, { slug: regex }],
-      };
+
+      // Tìm brand IDs khớp với search query trước
+      const matchingBrands = await Brand.find({ name: regex }).select("_id");
+      const brandIds = matchingBrands.map((b) => b._id);
+      console.log("Matching brands:", matchingBrands.length, brandIds);
+
+      // Tìm category IDs khớp với search query
+      const matchingCategories = await Category.find({ name: regex }).select(
+        "_id"
+      );
+      const categoryIds = matchingCategories.map((c) => c._id);
+
+      // Xây dựng filter động - chỉ thêm điều kiện nếu có kết quả
+      const orConditions = [{ name: regex }, { slug: regex }];
+
+      if (brandIds.length > 0) {
+        orConditions.push({ brand: { $in: brandIds } });
+      }
+
+      if (categoryIds.length > 0) {
+        orConditions.push({ category: { $in: categoryIds } });
+      }
+
+      const filter = { $or: orConditions };
 
       const query = Product.find(filter)
         .sort({ createdAt: -1 })
-        .populate("category", "name");
+        .populate("category", "name")
+        .populate("brand", "name");
 
       if (limit) query.limit(Number(limit));
 
       const products = await query.exec();
+      console.log("Search results:", products.length);
       return res.json(products);
     }
+    
 
     // No search: attempt to use redis cache
     if (redisClient && redisClient.isOpen) {
@@ -128,7 +234,8 @@ export const getProducts = async (req, res) => {
     console.log("--- MONGODB CACHE MISS ---");
     const products = await Product.find()
       .sort({ createdAt: -1 })
-      .populate("category", "name");
+      .populate("category", "name")
+      .populate("brand", "name");
 
     // Luu vao redis, ttl la 3600 giay
     if (redisClient && redisClient.isOpen) {
@@ -159,7 +266,23 @@ export const getFeaturedProducts = async (req, res) => {
 export const updateProduct = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, description, price, stock, category, storeId } = req.body;
+    const {
+      name,
+      description,
+      price,
+      discountPrice,
+      stock,
+      category,
+      brand,
+      storeId,
+      specifications,
+      highlights,
+      warranty,
+      origin,
+      isActive,
+      isBestSeller,
+      isNew,
+    } = req.body;
 
     const product = await Product.findById(id);
     if (!product) return res.status(404).json({ message: "Product not found" });
@@ -167,8 +290,30 @@ export const updateProduct = async (req, res) => {
     if (name !== undefined) product.name = name;
     if (description !== undefined) product.description = description;
     if (price !== undefined) product.price = Number(price);
+    if (discountPrice !== undefined)
+      product.discountPrice =
+        discountPrice === "" ? undefined : Number(discountPrice || 0);
     if (stock !== undefined) product.stock = Number(stock);
     if (storeId !== undefined) product.storeId = storeId || undefined;
+
+    if (specifications !== undefined) {
+      let parsedSpecifications = undefined;
+      if (specifications) {
+        try {
+          parsedSpecifications =
+            typeof specifications === "string"
+              ? JSON.parse(specifications)
+              : specifications;
+        } catch (e) {
+          console.warn(
+            "updateProduct: cannot parse specifications",
+            e?.message || e
+          );
+          parsedSpecifications = specifications;
+        }
+      }
+      product.specifications = parsedSpecifications;
+    }
 
     if (category) {
       if (mongoose.Types.ObjectId.isValid(category)) {
@@ -182,6 +327,46 @@ export const updateProduct = async (req, res) => {
     } else if (category === "") {
       product.category = undefined;
     }
+
+    if (brand) {
+      if (mongoose.Types.ObjectId.isValid(brand)) {
+        product.brand = brand;
+      } else {
+        const foundBrand = await Brand.findOne({
+          name: { $regex: `^${brand}$`, $options: "i" },
+        });
+        if (foundBrand) product.brand = foundBrand._id;
+      }
+    } else if (brand === "") {
+      product.brand = undefined;
+    }
+
+    if (highlights !== undefined) {
+      let parsedHighlights = undefined;
+      if (highlights) {
+        try {
+          const h =
+            typeof highlights === "string"
+              ? JSON.parse(highlights)
+              : highlights;
+          if (Array.isArray(h)) parsedHighlights = h;
+        } catch (e) {
+          console.warn(
+            "updateProduct: cannot parse highlights",
+            e?.message || e
+          );
+        }
+      }
+      product.highlights = parsedHighlights;
+    }
+
+    if (warranty !== undefined) product.warranty = warranty || undefined;
+    if (origin !== undefined) product.origin = origin || undefined;
+    if (isActive !== undefined)
+      product.isActive = isActive === "true" || isActive === true;
+    if (isBestSeller !== undefined)
+      product.isBestSeller = isBestSeller === "true" || isBestSeller === true;
+    if (isNew !== undefined) product.isNew = isNew === "true" || isNew === true;
 
     if (req.files && req.files.length) {
       const images = [];
