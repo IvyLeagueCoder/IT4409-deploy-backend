@@ -4,6 +4,7 @@ export const EOrderStatus = {
   WaitingForPayment: "waiting_for_payment",
   Pending: "pending",
   Confirmed: "confirmed",
+  Shipping: "shipping",
   Cancelled: "cancelled",
   Refunded: "refunded",
 };

@@ -1,25 +1,21 @@
-import User from '../models/user.js';
-import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
-import { OAuth2Client } from 'google-auth-library';
-import { JWT_SECRET, generateToken, generateRefreshToken, verifyRefreshToken } from '../utils/jwt.js';
-import { sendVerificationEmail, sendPasswordResetEmail } from '../config/email.js';
-
-function generateVerificationCode(length = 8) {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-  let code = '';
-  for (let i = 0; i < length; i += 1) {
-    code += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return code;
-}
+import User from "../models/user.js";
+import bcrypt from "bcryptjs";
+import jwt from "jsonwebtoken";
+import { OAuth2Client } from "google-auth-library";
+import {
+  JWT_SECRET,
+  generateToken,
+  generateRefreshToken,
+  verifyRefreshToken,
+} from "../utils/jwt.js";
+import { sendPasswordResetEmail } from "../config/email.js";
 
 const googleClientId = process.env.GOOGLE_CLIENT_ID;
 const googleClient = googleClientId ? new OAuth2Client(googleClientId) : null;
 
 async function verifyGoogleIdToken(idToken) {
   if (!googleClient || !googleClientId) {
-    throw new Error('Google login is not configured on server');
+    throw new Error("Google login is not configured on server");
   }
 
   const ticket = await googleClient.verifyIdToken({
@@ -32,24 +28,28 @@ async function verifyGoogleIdToken(idToken) {
 export const login = async (req, res) => {
   try {
     const { username, password } = req.body;
-    if (!username || !password) return res.status(400).json({ message: 'Missing username or password' });
+    if (!username || !password)
+      return res.status(400).json({ message: "Missing username or password" });
 
     const user = await User.findOne({ username });
-    if (!user) return res.status(401).json({ message: 'Invalid credentials' });
+    if (!user) return res.status(401).json({ message: "Invalid credentials" });
 
     const match = await bcrypt.compare(password, user.password);
-    if (!match) return res.status(401).json({ message: 'Invalid credentials' });
+    if (!match) return res.status(401).json({ message: "Invalid credentials" });
 
     const userObj = user.toObject();
     delete userObj.password;
 
-    const accessToken = generateToken(user._id.toString(), user.role || 'customer');
+    const accessToken = generateToken(
+      user._id.toString(),
+      user.role || "customer"
+    );
     const refreshToken = generateRefreshToken(user._id.toString());
 
     return res.json({ user: userObj, token: accessToken, refreshToken });
   } catch (err) {
     console.error(err);
-    return res.status(500).json({ message: 'Server error' });
+    return res.status(500).json({ message: "Server error" });
   }
 };
 
@@ -57,20 +57,22 @@ export const googleLogin = async (req, res) => {
   try {
     const { idToken } = req.body;
     if (!idToken) {
-      return res.status(400).json({ message: 'Thiếu token Google.' });
+      return res.status(400).json({ message: "Thiếu token Google." });
     }
 
     let payload;
     try {
       payload = await verifyGoogleIdToken(idToken);
     } catch (err) {
-      console.error('verifyGoogleIdToken failed', err);
-      return res.status(401).json({ message: 'Token Google không hợp lệ.' });
+      console.error("verifyGoogleIdToken failed", err);
+      return res.status(401).json({ message: "Token Google không hợp lệ." });
     }
 
     const { email, name, sub } = payload || {};
     if (!email) {
-      return res.status(400).json({ message: 'Không lấy được email từ Google.' });
+      return res
+        .status(400)
+        .json({ message: "Không lấy được email từ Google." });
     }
 
     let user = await User.findOne({ email });
@@ -81,7 +83,7 @@ export const googleLogin = async (req, res) => {
         user.isEmailVerified = true;
       }
       if (!user.authProvider) {
-        user.authProvider = 'local';
+        user.authProvider = "local";
       }
       if (!user.googleId && sub) {
         user.googleId = sub;
@@ -91,7 +93,10 @@ export const googleLogin = async (req, res) => {
       const userObj = user.toObject();
       delete userObj.password;
 
-      const accessToken = generateToken(user._id.toString(), user.role || 'customer');
+      const accessToken = generateToken(
+        user._id.toString(),
+        user.role || "customer"
+      );
       const refreshToken = generateRefreshToken(user._id.toString());
 
       return res.json({
@@ -106,23 +111,23 @@ export const googleLogin = async (req, res) => {
     const googleSignupToken = jwt.sign(
       {
         email,
-        fullname: name || '',
-        sub: sub || '',
-        type: 'google-signup',
+        fullname: name || "",
+        sub: sub || "",
+        type: "google-signup",
       },
       JWT_SECRET,
-      { expiresIn: '15m' }
+      { expiresIn: "15m" }
     );
 
     return res.json({
-      status: 'need_profile',
+      status: "need_profile",
       email,
-      fullname: name || '',
+      fullname: name || "",
       googleSignupToken,
     });
   } catch (err) {
     console.error(err);
-    return res.status(500).json({ message: 'Server error' });
+    return res.status(500).json({ message: "Server error" });
   }
 };
 
@@ -138,19 +143,35 @@ export const register = async (req, res) => {
       address,
     } = req.body;
 
-    if (!username || !password || !confirmPassword || !email || !fullname || !phoneNumber || !address) {
-      return res.status(400).json({ message: 'Vui lòng điền đầy đủ thông tin.' });
+    if (
+      !username ||
+      !password ||
+      !confirmPassword ||
+      !email ||
+      !fullname ||
+      !phoneNumber ||
+      !address
+    ) {
+      return res
+        .status(400)
+        .json({ message: "Vui lòng điền đầy đủ thông tin." });
     }
 
     if (password !== confirmPassword) {
-      return res.status(400).json({ message: 'Mật khẩu và xác nhận mật khẩu không khớp.' });
+      return res
+        .status(400)
+        .json({ message: "Mật khẩu và xác nhận mật khẩu không khớp." });
     }
 
     const existing = await User.findOne({ username });
-    if (existing) return res.status(409).json({ message: 'Tên đăng nhập đã được sử dụng.' });
+    if (existing)
+      return res
+        .status(409)
+        .json({ message: "Tên đăng nhập đã được sử dụng." });
 
     const existingEmail = await User.findOne({ email });
-    if (existingEmail) return res.status(409).json({ message: 'Email đã được sử dụng.' });
+    if (existingEmail)
+      return res.status(409).json({ message: "Email đã được sử dụng." });
 
     const salt = await bcrypt.genSalt(10);
     const hashed = await bcrypt.hash(password, salt);
@@ -160,45 +181,29 @@ export const register = async (req, res) => {
       fullname,
       email,
       password: hashed,
-      role: 'customer',
+      role: "customer",
       phoneNumber,
       addresses: [address],
+      isEmailVerified: true, // Bỏ qua xác thực email
     });
-
-    // Email test: bỏ qua bước xác thực, đăng nhập luôn
-    if (email === '1234@example.com') {
-      await user.save();
-      const userObj = user.toObject();
-      delete userObj.password;
-
-      const accessToken = generateToken(user._id.toString(), user.role || 'customer');
-      const refreshToken = generateRefreshToken(user._id.toString());
-
-      return res.status(201).json({ user: userObj, token: accessToken, refreshToken });
-    }
-
-    // Các email khác: tạo code xác thực và gửi email
-    const code = generateVerificationCode(8);
-    user.isEmailVerified = false;
-    user.emailVerificationCode = code;
-    user.emailVerificationExpires = new Date(Date.now() + 15 * 60 * 1000); // 15 phút
 
     await user.save();
 
-    try {
-      await sendVerificationEmail(email, code);
-    } catch (e) {
-      console.error('Send verification email failed', e);
-      // Không rollback user, chỉ báo vẫn tạo tài khoản nhưng gửi mail lỗi
-    }
+    const userObj = user.toObject();
+    delete userObj.password;
 
-    return res.status(201).json({
-      message: 'Đăng ký thành công. Vui lòng kiểm tra email để nhập mã xác thực.',
-      email,
-    });
+    const accessToken = generateToken(
+      user._id.toString(),
+      user.role || "customer"
+    );
+    const refreshToken = generateRefreshToken(user._id.toString());
+
+    return res
+      .status(201)
+      .json({ user: userObj, token: accessToken, refreshToken });
   } catch (err) {
     console.error(err);
-    return res.status(500).json({ message: 'Server error' });
+    return res.status(500).json({ message: "Server error" });
   }
 };
 
@@ -215,34 +220,51 @@ export const completeGoogleProfile = async (req, res) => {
     } = req.body;
 
     if (!googleSignupToken) {
-      return res.status(400).json({ message: 'Thiếu thông tin xác thực Google.' });
+      return res
+        .status(400)
+        .json({ message: "Thiếu thông tin xác thực Google." });
     }
 
     let decoded;
     try {
       decoded = jwt.verify(googleSignupToken, JWT_SECRET);
     } catch (err) {
-      return res.status(401).json({ message: 'Phiên Google đã hết hạn hoặc không hợp lệ.' });
+      return res
+        .status(401)
+        .json({ message: "Phiên Google đã hết hạn hoặc không hợp lệ." });
     }
 
-    if (!decoded || decoded.type !== 'google-signup' || !decoded.email) {
-      return res.status(400).json({ message: 'Dữ liệu Google không hợp lệ.' });
+    if (!decoded || decoded.type !== "google-signup" || !decoded.email) {
+      return res.status(400).json({ message: "Dữ liệu Google không hợp lệ." });
     }
 
     const email = decoded.email;
-    const googleSub = decoded.sub || '';
+    const googleSub = decoded.sub || "";
 
-    if (!username || !password || !confirmPassword || !fullname || !phoneNumber || !address) {
-      return res.status(400).json({ message: 'Vui lòng điền đầy đủ thông tin.' });
+    if (
+      !username ||
+      !password ||
+      !confirmPassword ||
+      !fullname ||
+      !phoneNumber ||
+      !address
+    ) {
+      return res
+        .status(400)
+        .json({ message: "Vui lòng điền đầy đủ thông tin." });
     }
 
     if (password !== confirmPassword) {
-      return res.status(400).json({ message: 'Mật khẩu và xác nhận mật khẩu không khớp.' });
+      return res
+        .status(400)
+        .json({ message: "Mật khẩu và xác nhận mật khẩu không khớp." });
     }
 
     const existingUserByUsername = await User.findOne({ username });
     if (existingUserByUsername) {
-      return res.status(409).json({ message: 'Tên đăng nhập đã được sử dụng.' });
+      return res
+        .status(409)
+        .json({ message: "Tên đăng nhập đã được sử dụng." });
     }
 
     const existingUserByEmail = await User.findOne({ email });
@@ -251,8 +273,13 @@ export const completeGoogleProfile = async (req, res) => {
       const userObj = existingUserByEmail.toObject();
       delete userObj.password;
 
-      const accessToken = generateToken(existingUserByEmail._id.toString(), existingUserByEmail.role || 'customer');
-      const refreshToken = generateRefreshToken(existingUserByEmail._id.toString());
+      const accessToken = generateToken(
+        existingUserByEmail._id.toString(),
+        existingUserByEmail.role || "customer"
+      );
+      const refreshToken = generateRefreshToken(
+        existingUserByEmail._id.toString()
+      );
 
       return res.json({
         user: userObj,
@@ -269,11 +296,11 @@ export const completeGoogleProfile = async (req, res) => {
       fullname,
       email,
       password: hashed,
-      role: 'customer',
+      role: "customer",
       phoneNumber,
       addresses: [address],
       isEmailVerified: true,
-      authProvider: 'google',
+      authProvider: "google",
       googleId: googleSub,
     });
 
@@ -282,7 +309,10 @@ export const completeGoogleProfile = async (req, res) => {
     const userObj = user.toObject();
     delete userObj.password;
 
-    const accessToken = generateToken(user._id.toString(), user.role || 'customer');
+    const accessToken = generateToken(
+      user._id.toString(),
+      user.role || "customer"
+    );
     const refreshToken = generateRefreshToken(user._id.toString());
 
     return res.status(201).json({
@@ -292,23 +322,23 @@ export const completeGoogleProfile = async (req, res) => {
     });
   } catch (err) {
     console.error(err);
-    return res.status(500).json({ message: 'Server error' });
+    return res.status(500).json({ message: "Server error" });
   }
 };
 
 export const profile = async (req, res) => {
   try {
-    const user = await User.findById(req.user.id).select('-password');
-    if (!user) return res.status(404).json({ message: 'User not found' });
+    const user = await User.findById(req.user.id).select("-password");
+    if (!user) return res.status(404).json({ message: "User not found" });
     return res.json({ user });
   } catch (err) {
     console.error(err);
-    return res.status(500).json({ message: 'Server error' });
+    return res.status(500).json({ message: "Server error" });
   }
 };
 
 export const adminOnly = (req, res) => {
-  return res.json({ message: 'Hello admin' });
+  return res.json({ message: "Hello admin" });
 };
 
 export const refreshToken = async (req, res) => {
@@ -316,22 +346,27 @@ export const refreshToken = async (req, res) => {
     const { refreshToken } = req.body;
 
     if (!refreshToken) {
-      return res.status(400).json({ message: 'Missing refresh token' });
+      return res.status(400).json({ message: "Missing refresh token" });
     }
 
     let payload;
     try {
       payload = verifyRefreshToken(refreshToken);
     } catch (err) {
-      return res.status(401).json({ message: 'Invalid or expired refresh token' });
+      return res
+        .status(401)
+        .json({ message: "Invalid or expired refresh token" });
     }
 
-    const user = await User.findById(payload.id).select('-password');
+    const user = await User.findById(payload.id).select("-password");
     if (!user) {
-      return res.status(404).json({ message: 'User not found' });
+      return res.status(404).json({ message: "User not found" });
     }
 
-    const newAccessToken = generateToken(user._id.toString(), user.role || 'customer');
+    const newAccessToken = generateToken(
+      user._id.toString(),
+      user.role || "customer"
+    );
     const newRefreshToken = generateRefreshToken(user._id.toString());
 
     return res.json({
@@ -341,60 +376,7 @@ export const refreshToken = async (req, res) => {
     });
   } catch (err) {
     console.error(err);
-    return res.status(500).json({ message: 'Server error' });
-  }
-};
-
-export const verifyEmailCode = async (req, res) => {
-  try {
-    const { email, code } = req.body;
-
-    if (!email || !code) {
-      return res.status(400).json({ message: 'Thiếu email hoặc mã xác thực.' });
-    }
-
-    const user = await User.findOne({ email }).select('+emailVerificationCode +emailVerificationExpires');
-    if (!user) {
-      return res.status(404).json({ message: 'Không tìm thấy tài khoản với email này.' });
-    }
-
-    if (user.isEmailVerified) {
-      return res.status(400).json({ message: 'Email đã được xác thực trước đó.' });
-    }
-
-    if (!user.emailVerificationCode || !user.emailVerificationExpires) {
-      return res.status(400).json({ message: 'Không có mã xác thực hợp lệ. Vui lòng đăng ký lại.' });
-    }
-
-    const now = new Date();
-    if (user.emailVerificationExpires < now) {
-      return res.status(400).json({ message: 'Mã xác thực đã hết hạn. Vui lòng đăng ký lại.' });
-    }
-
-    if (user.emailVerificationCode !== code.trim().toUpperCase()) {
-      return res.status(400).json({ message: 'Mã xác thực không đúng.' });
-    }
-
-    user.isEmailVerified = true;
-    user.emailVerificationCode = undefined;
-    user.emailVerificationExpires = undefined;
-    await user.save();
-
-    const userObj = user.toObject();
-    delete userObj.password;
-
-    const accessToken = generateToken(user._id.toString(), user.role || 'customer');
-    const refreshToken = generateRefreshToken(user._id.toString());
-
-    return res.json({
-      message: 'Xác thực email thành công.',
-      user: userObj,
-      token: accessToken,
-      refreshToken,
-    });
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ message: 'Server error' });
+    return res.status(500).json({ message: "Server error" });
   }
 };
 
@@ -403,14 +385,16 @@ export const forgotPasswordRequest = async (req, res) => {
     const { email } = req.body;
 
     if (!email) {
-      return res.status(400).json({ message: 'Vui lòng nhập email.' });
+      return res.status(400).json({ message: "Vui lòng nhập email." });
     }
 
     const user = await User.findOne({ email });
 
     // Để tránh lộ thông tin, vẫn trả về message chung nếu không tìm thấy user
     if (!user) {
-      return res.json({ message: 'Nếu email tồn tại, chúng tôi đã gửi mã xác thực.' });
+      return res.json({
+        message: "Nếu email tồn tại, chúng tôi đã gửi mã xác thực.",
+      });
     }
 
     const code = generateVerificationCode(8);
@@ -421,13 +405,15 @@ export const forgotPasswordRequest = async (req, res) => {
     try {
       await sendPasswordResetEmail(user.email, user.username, code);
     } catch (e) {
-      console.error('Send password reset email failed', e);
+      console.error("Send password reset email failed", e);
     }
 
-    return res.json({ message: 'Nếu email tồn tại, chúng tôi đã gửi mã xác thực.' });
+    return res.json({
+      message: "Nếu email tồn tại, chúng tôi đã gửi mã xác thực.",
+    });
   } catch (err) {
     console.error(err);
-    return res.status(500).json({ message: 'Server error' });
+    return res.status(500).json({ message: "Server error" });
   }
 };
 
@@ -436,29 +422,39 @@ export const resetPasswordWithCode = async (req, res) => {
     const { email, code, newPassword, confirmPassword } = req.body;
 
     if (!email || !code || !newPassword || !confirmPassword) {
-      return res.status(400).json({ message: 'Vui lòng nhập đầy đủ thông tin.' });
+      return res
+        .status(400)
+        .json({ message: "Vui lòng nhập đầy đủ thông tin." });
     }
 
     if (newPassword !== confirmPassword) {
-      return res.status(400).json({ message: 'Mật khẩu mới và xác nhận không khớp.' });
+      return res
+        .status(400)
+        .json({ message: "Mật khẩu mới và xác nhận không khớp." });
     }
 
     const user = await User.findOne({ email });
     if (!user) {
-      return res.status(404).json({ message: 'Không tìm thấy tài khoản với email này.' });
+      return res
+        .status(404)
+        .json({ message: "Không tìm thấy tài khoản với email này." });
     }
 
     if (!user.passwordResetCode || !user.passwordResetExpires) {
-      return res.status(400).json({ message: 'Không có mã đặt lại mật khẩu hợp lệ. Vui lòng yêu cầu lại.' });
+      return res.status(400).json({
+        message: "Không có mã đặt lại mật khẩu hợp lệ. Vui lòng yêu cầu lại.",
+      });
     }
 
     const now = new Date();
     if (user.passwordResetExpires < now) {
-      return res.status(400).json({ message: 'Mã đặt lại mật khẩu đã hết hạn. Vui lòng yêu cầu lại.' });
+      return res.status(400).json({
+        message: "Mã đặt lại mật khẩu đã hết hạn. Vui lòng yêu cầu lại.",
+      });
     }
 
     if (user.passwordResetCode !== code.trim().toUpperCase()) {
-      return res.status(400).json({ message: 'Mã xác thực không đúng.' });
+      return res.status(400).json({ message: "Mã xác thực không đúng." });
     }
 
     const salt = await bcrypt.genSalt(10);
@@ -469,10 +465,13 @@ export const resetPasswordWithCode = async (req, res) => {
     user.passwordResetExpires = undefined;
     await user.save();
 
-    return res.json({ message: 'Đặt lại mật khẩu thành công. Bạn có thể đăng nhập với mật khẩu mới.' });
+    return res.json({
+      message:
+        "Đặt lại mật khẩu thành công. Bạn có thể đăng nhập với mật khẩu mới.",
+    });
   } catch (err) {
     console.error(err);
-    return res.status(500).json({ message: 'Server error' });
+    return res.status(500).json({ message: "Server error" });
   }
 };
 
@@ -484,7 +483,6 @@ export default {
   profile,
   adminOnly,
   refreshToken,
-  verifyEmailCode,
   forgotPasswordRequest,
   resetPasswordWithCode,
 };

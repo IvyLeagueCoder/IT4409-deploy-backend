@@ -1,4 +1,3 @@
-
 import mongoose from "mongoose";
 
 export const EUserRole = {
@@ -8,7 +7,6 @@ export const EUserRole = {
   DeliveryCompany: "deliveryCompany",
   Admin: "admin",
 };
-
 
 const UserSchema = new mongoose.Schema(
   {
@@ -21,7 +19,9 @@ const UserSchema = new mongoose.Schema(
     addresses: [{ type: String, required: true }],
     avatarPicture: { type: String },
     vehicleLicenseNumber: { type: String },
-    discountCodes: [{ type: mongoose.Schema.Types.ObjectId, ref: "DiscountCode" }],
+    discountCodes: [
+      { type: mongoose.Schema.Types.ObjectId, ref: "DiscountCode" },
+    ],
     refreshToken: { type: String },
 
     // Phương thức đăng nhập: local (mật khẩu) hoặc google
@@ -32,10 +32,8 @@ const UserSchema = new mongoose.Schema(
     },
     googleId: { type: String },
 
-    // Xác thực email 
-    isEmailVerified: { type: Boolean, default: false },
-    emailVerificationCode: { type: String },
-    emailVerificationExpires: { type: Date },
+    // Xác thực email
+    isEmailVerified: { type: Boolean, default: true },
 
     // Quên mật khẩu
     passwordResetCode: { type: String },
@@ -43,6 +41,5 @@ const UserSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
-
 
 export default mongoose.model("User", UserSchema);

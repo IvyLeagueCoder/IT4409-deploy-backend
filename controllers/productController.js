@@ -7,6 +7,7 @@ import cloudinary from "../config/cloudinary.js";
 import { redisClient } from "../config/redis.js";
 
 const PRODUCT_CACHE_KEY = "products:all";
+const BESTSELLER_CACHE_KEY = "products:bestsellers";
 
 const uploadBufferToCloudinary = async (fileBuffer, mimetype, filename) => {
   const dataUri = `data:${mimetype};base64,${fileBuffer.toString("base64")}`;
@@ -219,7 +220,6 @@ export const getProducts = async (req, res) => {
       console.log("Search results:", products.length);
       return res.json(products);
     }
-    
 
     // No search: attempt to use redis cache
     if (redisClient && redisClient.isOpen) {
@@ -259,6 +259,86 @@ export const getFeaturedProducts = async (req, res) => {
     const products = await Product.find({ _id: { $in: ids } });
     res.json(products);
   } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+// Lấy sản phẩm bán chạy (có cache)
+export const getBestSellerProducts = async (req, res) => {
+  try {
+    const { limit = 15 } = req.query;
+    const cacheKey = `${BESTSELLER_CACHE_KEY}:${limit}`;
+
+    // Check Redis cache first
+    if (redisClient && redisClient.isOpen) {
+      const cached = await redisClient.get(cacheKey);
+      if (cached) {
+        console.log("--- BESTSELLER CACHE HIT ---");
+        return res.json(JSON.parse(cached));
+      }
+    }
+
+    console.log("--- BESTSELLER CACHE MISS ---");
+
+    // Single optimized query using aggregation
+    const products = await Product.aggregate([
+      {
+        $match: {
+          $or: [{ isActive: true }, { isActive: { $exists: false } }],
+        },
+      },
+      {
+        $addFields: {
+          sortPriority: { $cond: [{ $eq: ["$isBestSeller", true] }, 0, 1] },
+        },
+      },
+      { $sort: { sortPriority: 1, createdAt: -1 } },
+      { $limit: Number(limit) },
+      {
+        $lookup: {
+          from: "categories",
+          localField: "category",
+          foreignField: "_id",
+          as: "category",
+        },
+      },
+      {
+        $lookup: {
+          from: "brands",
+          localField: "brand",
+          foreignField: "_id",
+          as: "brand",
+        },
+      },
+      {
+        $addFields: {
+          category: { $arrayElemAt: ["$category", 0] },
+          brand: { $arrayElemAt: ["$brand", 0] },
+        },
+      },
+      {
+        $project: {
+          name: 1,
+          price: 1,
+          discountPrice: 1,
+          images: { $slice: ["$images", 1] },
+          isBestSeller: 1,
+          isNew: 1,
+          stock: 1,
+          "category.name": 1,
+          "brand.name": 1,
+        },
+      },
+    ]);
+
+    // Cache for 5 minutes
+    if (redisClient && redisClient.isOpen) {
+      await redisClient.setEx(cacheKey, 300, JSON.stringify(products));
+    }
+
+    res.json(products);
+  } catch (err) {
+    console.error("getBestSellerProducts error", err);
     res.status(500).json({ error: err.message });
   }
 };

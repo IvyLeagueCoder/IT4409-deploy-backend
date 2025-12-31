@@ -11,6 +11,27 @@ export const zaloPayConfig = {
   callback_url: process.env.ZALOPAY_CALLBACK_URL || "",
 };
 
+export const queryZaloPayStatus = async (appTransId) => {
+  const postData = {
+    app_id: zaloPayConfig.app_id,
+    app_trans_id: appTransId,
+  };
+
+  const data =
+    postData.app_id + "|" + postData.app_trans_id + "|" + zaloPayConfig.key1;
+  postData.mac = CryptoJS.HmacSHA256(data, zaloPayConfig.key1).toString();
+
+  const queryEndpoint =
+    process.env.ZALOPAY_QUERY_ENDPOINT ||
+    "https://sb-openapi.zalopay.vn/v2/query";
+
+  const response = await axios.post(queryEndpoint, null, {
+    params: postData,
+  });
+
+  return response.data;
+};
+
 export const createZaloPayOrder = async ({
   amount,
   appUser,
@@ -37,7 +58,9 @@ export const createZaloPayOrder = async ({
     description: description || `Payment for order #${transID}`,
     // Nếu bankCode không truyền vào, để trống để ZaloPay hiển thị nhiều kênh thanh toán (gateway)
     ...(bankCode ? { bank_code: bankCode } : {}),
-    ...(callbackUrl ? { callback_url: callbackUrl } : zaloPayConfig.callback_url
+    ...(callbackUrl
+      ? { callback_url: callbackUrl }
+      : zaloPayConfig.callback_url
       ? { callback_url: zaloPayConfig.callback_url }
       : {}),
   };
@@ -68,5 +91,5 @@ export const createZaloPayOrder = async ({
     appTransId: order.app_trans_id,
   };
 };
- 
-export default { createZaloPayOrder, zaloPayConfig };
+
+export default { createZaloPayOrder, queryZaloPayStatus, zaloPayConfig };

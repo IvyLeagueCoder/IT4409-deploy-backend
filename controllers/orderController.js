@@ -24,7 +24,8 @@ export const createOrder = async (req, res) => {
 
     if (!customerName || !customerPhone || !shippingAddress) {
       return res.status(400).json({
-        message: "Missing required fields (customerName, customerPhone, shippingAddress)",
+        message:
+          "Missing required fields (customerName, customerPhone, shippingAddress)",
       });
     }
 
@@ -95,7 +96,9 @@ export const createOrder = async (req, res) => {
       appliedVoucherCode = voucherResult.voucher?.code || voucherCode;
     }
 
-    const resolvedPaymentMethod = Object.values(EPaymentMethod).includes(paymentMethod)
+    const resolvedPaymentMethod = Object.values(EPaymentMethod).includes(
+      paymentMethod
+    )
       ? paymentMethod
       : EPaymentMethod.Cash;
 
@@ -110,9 +113,7 @@ export const createOrder = async (req, res) => {
     if (resolvedPaymentMethod === EPaymentMethod.Zalopay) {
       try {
         const clientUrl = process.env.CLIENT_URL?.split(",")[0] || "";
-        const embedData = clientUrl
-          ? { redirecturl: clientUrl }
-          : {};
+        const embedData = clientUrl ? { redirecturl: clientUrl } : {};
 
         const { data, appTransId } = await createZaloPayOrder({
           amount: totalPrice,
@@ -172,7 +173,11 @@ export const createOrder = async (req, res) => {
     return res.status(201).json({ order, paymentData });
   } catch (err) {
     const message = err?.message || "Server error";
-    if (message.includes("Invalid") || message.includes("required") || message.includes("Missing")) {
+    if (
+      message.includes("Invalid") ||
+      message.includes("required") ||
+      message.includes("Missing")
+    ) {
       return res.status(400).json({ message });
     }
     console.error("createOrder error:", err);
@@ -187,7 +192,9 @@ export const getMyOrders = async (req, res) => {
       return res.status(401).json({ message: "Not authenticated" });
     }
 
-    const orders = await Order.find({ customerId }).sort({ createdAt: -1 }).lean();
+    const orders = await Order.find({ customerId })
+      .sort({ createdAt: -1 })
+      .lean();
     return res.json({ orders });
   } catch (err) {
     console.error("getMyOrders error:", err);
@@ -223,7 +230,9 @@ export const getOrderStats = async (req, res) => {
     let endDate = to ? new Date(to) : new Date();
 
     if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
-      return res.status(400).json({ message: "Tham số thời gian không hợp lệ." });
+      return res
+        .status(400)
+        .json({ message: "Tham số thời gian không hợp lệ." });
     }
 
     // Không cho lấy trước 1/2025
@@ -252,20 +261,12 @@ export const getOrderStats = async (req, res) => {
           _id: groupId,
           soldOrders: {
             $sum: {
-              $cond: [
-                { $eq: ["$orderStatus", EOrderStatus.Confirmed] },
-                1,
-                0,
-              ],
+              $cond: [{ $eq: ["$orderStatus", EOrderStatus.Confirmed] }, 1, 0],
             },
           },
           returnedOrders: {
             $sum: {
-              $cond: [
-                { $eq: ["$orderStatus", EOrderStatus.Cancelled] },
-                1,
-                0,
-              ],
+              $cond: [{ $eq: ["$orderStatus", EOrderStatus.Cancelled] }, 1, 0],
             },
           },
           revenue: {
@@ -317,7 +318,9 @@ export const getOrderStats = async (req, res) => {
     return res.json({ granularity, from: startDate, to: endDate, points });
   } catch (err) {
     console.error("getOrderStats error", err);
-    return res.status(500).json({ message: "Lỗi server khi lấy thống kê đơn hàng." });
+    return res
+      .status(500)
+      .json({ message: "Lỗi server khi lấy thống kê đơn hàng." });
   }
 };
 
@@ -351,5 +354,148 @@ export const cancelOrder = async (req, res) => {
   }
 };
 
+// Admin: Xác nhận đơn hàng (chuyển sang shipping)
+export const confirmOrderByAdmin = async (req, res) => {
+  try {
+    const orderId = req.params.id;
 
-export default { createOrder, getMyOrders, getAllOrders, cancelOrder, getOrderStats };
+    if (!mongoose.isValidObjectId(orderId)) {
+      return res.status(400).json({ message: "Invalid order id" });
+    }
+
+    const order = await Order.findById(orderId);
+    if (!order) {
+      return res.status(404).json({ message: "Order not found" });
+    }
+
+    // Chỉ cho phép xác nhận nếu đang ở trạng thái pending hoặc confirmed
+    if (
+      ![EOrderStatus.Pending, EOrderStatus.Confirmed].includes(
+        order.orderStatus
+      )
+    ) {
+      return res
+        .status(400)
+        .json({ message: "Không thể xác nhận đơn hàng ở trạng thái này" });
+    }
+
+    order.orderStatus = EOrderStatus.Shipping;
+    await order.save();
+
+    return res.json({
+      order,
+      message: "Đơn hàng đã được xác nhận và đang giao",
+    });
+  } catch (err) {
+    console.error("confirmOrderByAdmin error:", err);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+
+// Admin: Hủy đơn hàng
+export const cancelOrderByAdmin = async (req, res) => {
+  try {
+    const orderId = req.params.id;
+
+    if (!mongoose.isValidObjectId(orderId)) {
+      return res.status(400).json({ message: "Invalid order id" });
+    }
+
+    const order = await Order.findById(orderId);
+    if (!order) {
+      return res.status(404).json({ message: "Order not found" });
+    }
+
+    if (order.orderStatus === EOrderStatus.Cancelled) {
+      return res.status(400).json({ message: "Đơn hàng đã bị hủy rồi" });
+    }
+
+    order.orderStatus = EOrderStatus.Cancelled;
+    await order.save();
+
+    return res.json({ order, message: "Đơn hàng đã được hủy" });
+  } catch (err) {
+    console.error("cancelOrderByAdmin error:", err);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+
+// User: Xác nhận đã nhận hàng (shipping -> confirmed)
+export const receiveOrder = async (req, res) => {
+  try {
+    const customerId = req.user?.id;
+    const orderId = req.params.id;
+
+    if (!customerId || !mongoose.isValidObjectId(customerId)) {
+      return res.status(401).json({ message: "Not authenticated" });
+    }
+    if (!mongoose.isValidObjectId(orderId)) {
+      return res.status(400).json({ message: "Invalid order id" });
+    }
+
+    const order = await Order.findOne({ _id: orderId, customerId });
+    if (!order) {
+      return res.status(404).json({ message: "Order not found" });
+    }
+
+    if (order.orderStatus !== EOrderStatus.Shipping) {
+      return res
+        .status(400)
+        .json({ message: "Chỉ có thể nhận hàng khi đơn đang giao" });
+    }
+
+    order.orderStatus = EOrderStatus.Confirmed;
+    await order.save();
+
+    return res.json({ order, message: "Đã xác nhận nhận hàng thành công" });
+  } catch (err) {
+    console.error("receiveOrder error:", err);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+
+// User: Trả hàng (shipping -> refunded)
+export const refundOrder = async (req, res) => {
+  try {
+    const customerId = req.user?.id;
+    const orderId = req.params.id;
+
+    if (!customerId || !mongoose.isValidObjectId(customerId)) {
+      return res.status(401).json({ message: "Not authenticated" });
+    }
+    if (!mongoose.isValidObjectId(orderId)) {
+      return res.status(400).json({ message: "Invalid order id" });
+    }
+
+    const order = await Order.findOne({ _id: orderId, customerId });
+    if (!order) {
+      return res.status(404).json({ message: "Order not found" });
+    }
+
+    if (order.orderStatus !== EOrderStatus.Shipping) {
+      return res
+        .status(400)
+        .json({ message: "Chỉ có thể trả hàng khi đơn đang giao" });
+    }
+
+    order.orderStatus = EOrderStatus.Refunded;
+    await order.save();
+
+    return res.json({ order, message: "Đã yêu cầu trả hàng thành công" });
+  } catch (err) {
+    console.error("refundOrder error:", err);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+
+export default {
+  createOrder,
+  getMyOrders,
+  getAllOrders,
+  cancelOrder,
+  getOrderStats,
+  confirmOrderByAdmin,
+  cancelOrderByAdmin,
+  receiveOrder,
+  refundOrder,
+};
