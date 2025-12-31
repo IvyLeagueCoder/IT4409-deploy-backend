@@ -1,5 +1,6 @@
 import User from '../models/user.js';
-import bcrypt from 'bcryptjs';
+import bcrypt from 'bcryptjs'; 
+import axios from 'axios';
 import jwt from 'jsonwebtoken';
 import { OAuth2Client } from 'google-auth-library';
 import { JWT_SECRET, generateToken, generateRefreshToken, verifyRefreshToken } from '../utils/jwt.js';
