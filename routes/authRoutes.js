@@ -2,7 +2,7 @@ import express from "express";
 import rateLimit from "express-rate-limit";
 import * as authController from "../controllers/authController.js";
 import { authenticateToken, authorizeRole } from "../middleware/auth.js";
-import { verifyCaptcha } from "../middleware/captcha.js";
+
 
 const router = express.Router();
 
