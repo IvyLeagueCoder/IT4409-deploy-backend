@@ -2,22 +2,23 @@ import express from 'express';
 import rateLimit from 'express-rate-limit';
 import * as authController from '../controllers/authController.js';
 import { authenticateToken, authorizeRole } from '../middleware/auth.js';
-import { verifyCaptcha } from '../middleware/captcha.js';
 
 const router = express.Router();
 
 const authLimiter = rateLimit({
-	windowMs: 15 * 60 * 1000,
-	max: 20,
-	standardHeaders: true,
-	legacyHeaders: false,
-	message: {
-		message: 'Too many attempts, please try again later',
-	},
+    windowMs: 15 * 60 * 1000,
+    max: 20,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: {
+        message: 'Too many attempts, please try again later',
+    },
 });
 
-router.post('/login', verifyCaptcha, authLimiter, authController.login);
-router.post('/register', verifyCaptcha, authLimiter, authController.register);
+
+router.post('/login', authLimiter, authController.login); 
+router.post('/register', authLimiter, authController.register); 
+
 router.post('/login/google', authLimiter, authController.googleLogin);
 router.post('/google/complete-profile', authLimiter, authController.completeGoogleProfile);
 router.post('/verify-email', authLimiter, authController.verifyEmailCode);
