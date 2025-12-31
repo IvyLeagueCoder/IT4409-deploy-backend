@@ -16,7 +16,7 @@ const authLimiter = rateLimit({
   },
 });
 
-router.post("/login", verifyCaptcha, authLimiter, authController.login);
+
 router.post("/register", authLimiter, authController.register);
 router.post("/login/google", authLimiter, authController.googleLogin);
 router.post(
